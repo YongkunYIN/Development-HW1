@@ -1,0 +1,1081 @@
+
+
+########## Code to solve HW1 Question 1.
+########## Yongkun Yin Cemfi.
+########## Data used: Uganda 2013-2014
+
+
+#### Part 1. COMPUTE ANNUAL CONSUMPTION.
+
+
+### Food, Beverage, and Tobacco
+# HH Questionnaire Section 15: Household Consumption Expenditure; Part B: Food, Beverage, and Tobacco (During the Last 7 Days)
+
+use "E:\Development\GSEC15B.dta", clear
+
+egen consum_food = rowtotal(h15bq5 h15bq7 h15bq9 h15bq11) 
+
+replace consum_food = consum_food / 7 * 365
+
+collapse (sum) consum_food, by (HHID)
+
+save "consum_food.dta", replace
+
+
+
+### Non-Durable Goods and Frequently Purchased Services
+# HH Questionnaire Section 15: Household Consumption Expenditure; Part C: Non-Durable Goods and Frequently Purchased Services (During the last 30 days)
+
+use "GSEC15C.dta", clear 
+
+egen consum_nondurable = rowtotal(h15cq5 h15cq7 h15cq9)
+
+replace consum_nondurable = consum_nondurable / 30 * 365
+
+collapse (sum) consum_nondurable, by (HHID)
+
+save "consum_nondurable.dta", replace
+
+
+
+### durable consumption in last 12 months.
+# HH Questionnaire Section 15: Household Consumption Expenditure; Part D: Semi-Durable Goods and Durable Goods and Service (During the last 365 days)
+
+use "GSEC15D.dta", clear 
+
+egen consum_durable = rowtotal(h15dq3 h15dq4 h15dq5)
+
+collapse (sum) consum_durable, by (HHID)
+
+save "consum_durable.dta", replace
+
+
+
+# Note: I prefer not to include education expenditure into consumption expenditure. (In the questionaire it is not included either.)
+### school expenditure in last 12 months
+# HH Questionnaire Section 4: Education (All Persons 3 Years and above)
+
+# use "GSEC4.dta", clear
+
+# collapse (sum) h4q15g, by(HHID)
+
+# rename h4q15g consum_edu
+
+# save "consum_edu.dta", replace
+
+
+
+### Aggregate across all types of consumptions.
+ 
+use "consum_food.dta", clear
+
+merge 1:1 HHID using "consum_nondurable.dta"
+
+drop _merge
+
+merge 1:1 HHID using "consum_durable.dta"
+
+drop _merge
+
+egen consum = rowtotal(consum_food consum_nondurable consum_durable)
+
+save "consum.dta", replace
+
+
+
+
+
+
+#### Part 2. COMPUTE ANNUAL INCOME.
+
+
+
+### Labor Income.
+# Section 8: Labour Force Status (for all household members 10 years and above)
+
+use "GSEC8_1.dta", clear 
+
+## income from main job
+# Several questions arise. (1) only payment in last 7 days. (2) how does the survey deal with job change in last 12 months.
+
+egen hours_last_week_main = rowtotal(h8q36a h8q36b h8q36c h8q36d h8q36e h8q36f h8q36g)
+gen weeks_per_month_main = h8q30b
+gen months_last_year_main = h8q30a
+
+egen payment_last_main = rowtotal(h8q31a h8q31b)
+
+gen income_main = payment_last_main * months_last_year_main if h8q31c==4
+
+replace income_main = payment_last_main * months_last_year_main * weeks_per_month_main if h8q31c==3
+
+# Note: here I assume people work 7 days per week
+replace income_main = payment_last_main * months_last_year_main * weeks_per_month_main * 7 if h8q31c==2
+
+replace income_main = payment_last_main * months_last_year_main * weeks_per_month_main * hours_last_week_main if h8q31c==1
+
+# Note: It seems that for those answering "other", we cannot recover their income in last 12 months since the time period is not specified although it should be specified.
+
+
+## income from secondary job
+
+gen hours_last_week_second = h8q43
+gen weeks_per_month_second = h8q44b
+gen months_last_year_second = h8q44
+
+egen payment_last_second = rowtotal(h8q45a h8q45b)
+
+gen income_second = payment_last_second * months_last_year_second if h8q45c==4
+
+replace income_second = payment_last_second * months_last_year_second * weeks_per_month_second if h8q45c==3
+
+replace income_second = payment_last_second * months_last_year_second * weeks_per_month_second * 7 if h8q45c==2
+
+replace income_second = payment_last_second * months_last_year_second * weeks_per_month_second * hours_last_week_second if h8q45c==1
+
+##
+egen income_labor = rowtotal(income_main income_second)
+
+collapse (sum) income_labor, by (HHID)
+
+save "income_labor.dta", replace
+
+
+
+### Net Crop Income
+
+## Agricultural inputs - first visit.
+# Section 3A: Agricultural and labor inputs - first visit
+
+use "AGSEC3A.dta", clear
+
+# organic fertilizer: a3aq8;
+# inorganic fertilizer: a3aq18;
+# pesticide: a3aq27;
+# labor: a3aq36.
+
+egen input_first = rowtotal(a3aq8 a3aq18 a3aq27 a3aq36)
+
+collapse (sum) input_first, by (hh) 
+
+save "crop_input_first.dta", replace
+
+## Agricultural inputs - second visit.
+# Section 3B: Agricultural and labor inputs - second visit
+
+use "AGSEC3B.dta", clear
+
+egen input_second = rowtotal(a3bq8 a3bq18 a3bq27 a3bq36)
+
+collapse (sum) input_second, by (hh) 
+
+save "crop_input_second.dta", replace
+
+## Seed - first visit
+# Section 4A: Crops grown and types of seeds used - first visit
+
+use "AGSEC4A.dta", clear
+
+gen seed_first = a4aq15
+
+collapse (sum) seed_first, by(hh)
+
+save "crop_seed_first.dta", replace
+
+## Seed - second visit
+# Section 4B: Crops grown and types of seeds used - second visit
+use "AGSEC4B.dta", clear
+
+gen seed_second = a4bq15
+
+collapse (sum) seed_second, by(hh)
+
+save "crop_seed_second.dta", replace
+
+
+## Agricultural production - first visit
+# Section 5A: Quantification of production - first visit
+# For sold crops, we have the value directly.
+# For unsold crops, use the region-season median price to compute the value.
+# Step 1. Compute the region-season median (at the gate) price.
+# Step 2. Compute the value of unsold crop.
+# Step 3. Compute the total value of all harvestes crops.
+
+use "AGSEC5A.dta", clear
+
+# price per kg
+gen price = a5aq8/(a5aq7a*a5aq7d)
+keep cropID price hh
+
+save "crop_price_first.dta", replace
+
+# merge m:m hh using "AGSEC1.dta"
+
+use "UNPS 2013-14 Consumption Aggregate.dta", clear
+
+rename HHID hh
+
+save "UNPS 2013-14 Consumption Aggregate_2.dta", replace
+
+merge m:m hh using "crop_price_first.dta"
+
+# compute median price.
+bysort cropID region: egen price_median = median(price)
+
+keep cropID price_median hh
+
+save "crop_price_median_first.dta", replace
+
+use "AGSEC5A.dta", clear
+
+merge m:m hh cropID using "crop_price_median_first.dta"
+
+keep if _merge==3
+drop _merge
+
+# compute the value of unsold crops.
+gen value_unsold = price_median * (a5aq6a*a5aq6d - a5aq7a*a5aq7d)
+
+# due to measurement error, unsold crop could be negative (size is small). let it be 0.
+replace value_unsold = 0 if value_unsold<0 
+
+# compute total value of crops
+gen value_first = value_unsold + a5aq8
+
+# aggregate at the hh level
+collapse (sum) value_first, by(hh)
+
+save "crop_production_first.dta", replace
+
+
+## Agricultural production - second visit
+# Section 5B: Quantification of production - second visit
+
+use "AGSEC5B.dta", clear
+
+# price per kg
+gen price = a5bq8/(a5bq7a*a5bq7d)
+keep cropID price hh
+
+save "crop_price_second.dta", replace
+
+# merge m:m hh using "AGSEC1.dta"
+
+merge m:m hh using  "UNPS 2013-14 Consumption Aggregate_2.dta"
+
+# compute median price.
+bysort cropID region: egen price_median = median(price)
+
+keep cropID price_median hh
+
+save "crop_price_median_second.dta", replace
+
+use "AGSEC5B.dta", clear
+
+merge m:m hh cropID using "crop_price_median_second.dta"
+
+keep if _merge==3
+drop _merge
+
+# compute the value of unsold crops.
+gen value_unsold = price_median * (a5bq6a*a5bq6d - a5bq7a*a5bq7d)
+
+# due to measurement error, unsold crop could be negative (size is small). let it be 0.
+replace value_unsold = 0 if value_unsold<0 
+
+# compute total value of crops
+gen value_second = value_unsold + a5bq8
+
+# aggregate at the hh level
+collapse (sum) value_second, by(hh)
+
+save "crop_production_second.dta", replace
+
+
+## compute hh crop income.
+# first visit
+
+use "crop_production_first.dta", clear
+
+merge 1:1 hh using "crop_seed_first.dta"
+
+drop _merge
+
+merge 1:1 hh using "crop_input_first.dta"
+
+drop _merge
+
+# It is possible that no crop is harvested even with positive inputs. So I dont remove obs like this.
+
+replace value_first = 0 if value_first==.
+replace seed_first = 0 if seed_first==.
+replace input_first = 0 if input_first==.
+
+gen profit_first = value_first - seed_first - input_first
+
+save "income_crop_first.dta", replace
+
+# second visit
+
+use "crop_production_second.dta", clear
+
+merge 1:1 hh using "crop_seed_second.dta"
+
+drop _merge
+
+merge 1:1 hh using "crop_input_second.dta"
+
+drop _merge
+
+replace value_second = 0 if value_second==.
+replace seed_second = 0 if seed_second==.
+replace input_second = 0 if input_second==.
+
+gen profit_second = value_second - seed_second - input_second
+
+save "income_crop_second.dta", replace
+
+
+### Income from livestocks.
+
+## Selling Livestock. 1. Cattle and pack animals. 2. Small animals. 3. Poultry and others.
+# Income = Earnings from selling - Cost of buying - labor payment.
+
+# Agriculture Questionnaire Section 6A: Cattle and pack animals
+
+use "AGSEC6A.dta", clear
+
+gen selling = a6aq14a*a6aq14b
+gen buying = a6aq13a*a6aq13b
+gen labor_payment = a6aq5c
+
+replace selling = 0 if selling==.
+replace buying = 0 if buying==. 
+replace labor_payment = 0 if labor_payment==.
+
+gen income_cattle = selling - buying - labor_payment
+
+collapse (sum) income_cattle, by(hh)
+
+save "income_cattle.dta", replace
+
+
+# Agriculture Questionnaire Section 6B: Small animals
+
+use "AGSEC6B.dta", clear
+
+gen selling = a6bq14a*a6bq14b
+gen buying = a6bq13a*a6bq13b
+gen labor_payment = a6bq5c
+
+replace selling = 0 if selling==.
+replace buying = 0 if buying==. 
+replace labor_payment = 0 if labor_payment==.
+
+gen income_smallAnim = selling - buying - labor_payment
+
+collapse (sum) income_smallAnim, by(hh)
+
+save "income_smallAnim.dta", replace
+
+
+# Agriculture Questionnaire Section 6C: Poultry and others
+
+use "AGSEC6C.dta", clear 
+
+gen selling = a6cq14a*a6cq14b
+gen buying = a6cq13a*a6cq13b
+gen labor_payment = a6cq5c
+
+replace selling = 0 if selling==.
+replace buying = 0 if buying==. 
+replace labor_payment = 0 if labor_payment==.
+
+gen income_poultry = (selling - buying - labor_payment)*4
+
+collapse (sum) income_poultry, by(hh)
+
+save "income_poultry.dta", replace
+
+
+# aggregate across all types of livestocks.
+
+use "income_cattle.dta", clear
+
+merge 1:1 hh using "income_smallAnim.dta"
+
+drop _merge
+
+merge 1:1 hh using "income_poultry.dta"
+
+drop _merge
+
+egen income_livestock_selling = rowtotal(income_cattle income_smallAnim income_poultry)
+
+save "income_selling_livestock.dta", replace
+
+
+## Livestock production: meat, milk, eggs.
+
+# meat
+use "AGSEC8A.dta", clear
+
+gen income_meat = a8aq5
+
+collapse (sum) income_meat, by (hh)
+
+save "income_meat.dta", replace
+
+# milk
+use "AGSEC8B.dta", clear
+
+gen income_milk = a8bq9
+
+collapse (sum) income_milk, by (hh)
+
+save "income_milk.dta", replace
+
+# eggs
+use "AGSEC8C.dta", clear
+
+gen income_eggs = a8cq5
+
+collapse (sum) income_eggs, by (hh)
+
+save "income_eggs.dta", replace
+
+# Aggregate across meat, milk and eggs.
+use "income_meat.dta"
+
+merge 1:1 hh using "income_milk.dta"
+
+drop _merge
+
+merge 1:1 hh using "income_eggs.dta"
+
+drop _merge
+
+egen income_livestock_product = rowtotal(income_meat income_milk income_eggs)
+
+save "income_livestock_product.dta", replace
+
+
+## Livestock inputs
+# payment for feeding, water source, vaccination, deworming, treatment against ticks, curative treatment.
+
+use "AGSEC7.dta", clear 
+
+egen cost_livestock = rowtotal(a7bq2e a7bq3f a7bq5d a7bq6c a7bq7c a7bq8c)
+
+collapse (sum) cost_livestock, by(hh)
+
+save "cost_livestock.dta", replace
+
+
+## compute net income from livestocks.
+
+use "income_selling_livestock.dta", clear
+
+merge 1:1 hh using "income_livestock_product.dta"
+
+drop _merge
+
+merge 1:1 hh using "cost_livestock.dta"
+
+drop _merge
+
+replace income_livestock_selling = 0 if income_livestock_selling==.
+replace income_livestock_product = 0 if income_livestock_product==.
+replace cost_livestock = 0 if cost_livestock==.
+
+gen income_livestock = income_livestock_selling - income_livestock_product - cost_livestock
+
+save "income_livestock.dta", replace
+
+
+
+### Business Income
+# HH Questionnaire Section 12: Non-Agricultural Household Enterprises/Activities
+
+use "gsec12.dta", clear
+
+gen profit = (h12q13 - h12q15 - h12q16 - h12q17)*h12q12
+replace profit = 0 if profit==.
+
+# Note: Some repondents answered no enterprise but info about "the" enterprise. (The data are processed such that the enterprerises exist.
+
+keep hhid profit
+
+collapse (sum) profit, by(hhid)
+
+save "income_business.dta", replace
+
+
+
+### Other Income.
+# HH Questionnaire Section 11: Other Household Income in the past 12 months
+
+use "GSEC11A.dta", clear
+
+egen income_other = rowtotal(h11q5 h11q6)
+
+save "income_other.dta", replace
+
+
+
+### Finally, home produced/ received consumption. (not included in previous variables.)
+
+## Food, Beverage, and Tobacco
+
+use "GSEC15B.dta", clear
+
+egen income_food = rowtotal(h15bq9 h15bq11) 
+
+replace income_food = income_food / 7 * 365
+
+collapse (sum) income_food, by (HHID)
+
+save "income_food.dta", replace
+
+
+## Non-Durable Goods and Frequently Purchased Services
+
+use "GSEC15C.dta", clear 
+
+egen income_nondurable = rowtotal(h15cq7 h15cq9)
+
+replace income_nondurable = income_nondurable / 30 * 365
+
+collapse (sum) income_nondurable, by (HHID)
+
+save "income_nondurable.dta", replace
+
+
+## durable consumption in last 12 months.
+
+use "GSEC15D.dta", clear 
+
+egen income_durable = rowtotal(h15dq4 h15dq5)
+
+collapse (sum) income_durable, by (HHID)
+
+save "income_durable.dta", replace
+
+
+## aggregate across all types of consumption.
+
+use "income_food.dta", clear
+
+merge 1:1 HHID using "income_nondurable.dta"
+
+drop _merge
+
+merge 1:1 HHID using "income_durable.dta"
+
+drop _merge
+
+egen income_selfproduced_transferred = rowtotal(income_food income_nondurable income_durable)
+
+save "income_selfproduced_transferred.dta", replace
+
+
+
+### Agrregate over all types of income
+
+# preprepare the data
+
+use "income_labor.dta", clear
+
+use "income_crop_first.dta", clear
+rename hh HHID
+save "income_crop_first.dta", replace
+
+use "income_crop_second.dta", clear
+rename hh HHID
+save "income_crop_second.dta", replace
+
+use "income_livestock.dta", clear
+rename hh HHID
+save "income_livestock.dta", replace
+
+use "income_business.dta", clear
+rename hhid HHID
+save "income_business.dta", replace
+
+use "income_other.dta", clear
+
+use "income_selfproduced_transferred.dta", clear
+
+
+# merge data
+
+use "income_labor.dta", clear
+
+merge 1:1 HHID using "income_crop_first.dta"
+
+drop _merge
+
+merge 1:1 HHID using "income_crop_second.dta"
+
+drop _merge
+
+merge 1:1 HHID using "income_livestock.dta"
+
+drop _merge
+
+merge 1:1 HHID using "income_business.dta"
+
+drop _merge
+
+merge 1:1 HHID using "income_other.dta"
+
+drop _merge
+
+merge 1:1 HHID using "income_selfproduced_transferred.dta"
+
+drop _merge
+
+egen income = rowtotal( income_labor profit_first profit_second income_livestock profit income_other income_selfproduced_transferred)
+
+save "income.dta", replace
+
+
+
+
+
+
+
+
+#### Part 3. COMPUTING WEALTH
+
+
+
+### Housing and other durables.
+## HH Questionnaire Section 14A: Household Assets
+
+use "GSEC14A.dta", clear
+
+# The online appendix gives wrong guidance. The total value of each item of assets is given, not the price. 
+collapse (sum) h14q5, by(HHID)
+
+rename h14q5 asset_house
+
+save "asset_house.dta", replace
+
+
+
+### Land
+## Agriculture Questionnaire Section 2A: Current land holdings , first and second visit
+
+# For most parcels of owned land, we have no info. on the estimated value.
+# The value of each parcel of land is thus estimated with the following approach.
+# Step 1. Regress rent on size and land quality for land that is rented by the household. (we have many more obs in the dataset.)
+# Step 2. Predict the value of each parcel of owned land with the coefficients obtained above.
+# The approach works well since (1) as expected, the constant term is not significantly different from 0 when it is included (so I prefer not too include it), (2) R^2 is very high (0.6769), and (3) the correlation coefficient between the predicted value and the given estimated value is very high (0.7171). 
+# Another possible approach: use the region-specific median price.
+
+use "AGSEC2B.dta", clear
+replace a2bq14 = . if a2bq14==6
+
+tab a2bq14, gen(soil_type)
+tab a2bq15, gen(land_quality)
+tab a2bq16, gen(water_source)
+tab a2bq17, gen(topography)
+tab a2bq18, gen(erosion)
+
+reg a2bq9 a2bq5 soil_type2 soil_type3 land_quality2 land_quality3 water_source2 water_source3 topography2 topography3 topography4 topography5 erosion2, nocon
+
+#
+
+use "AGSEC2A.dta", clear
+
+replace a2aq16 = . if a2aq16==6
+replace a2aq19 = . if a2aq19==6
+
+tabulate a2aq16, gen(soil_type)
+tabulate a2aq17, gen(land_quality)
+tabulate a2aq18, gen(water_source)
+tabulate a2aq19, gen(topography)
+tabulate a2aq20, gen(erosion)
+
+# predicted annual rent.
+gen asset_land = 31294.14*a2aq5 + 14261.85*soil_type2 + 4765.42*soil_type3 + (-3727.4)*land_quality2 + (-18284.42)*land_quality3 + 56150.73*water_source2 + 67042.05*water_source3 + (-2136.811)*topography2 + (-12045.33)*topography3 + (-2702.417)*topography4 + (-26518.33)*topography5 + (-14321.27)*erosion2
+
+collapse (sum) asset_land, by(hh)
+
+# value = annual rent * 10 yrs.
+replace asset_land = asset_land *10
+
+save "asset_land.dta", replace
+
+
+
+### Agricultural equipment and structure capital
+## Agriculture Questionnaire Section 10: Farm implements and machinery
+
+use "AGSEC10.dta", clear
+
+collapse (sum) a10q2, by(hh)
+
+rename a10q2 asset_equip
+
+save "asset_equip.dta", replace
+
+
+
+### Fishery equipment capital
+# not found for Uganda.
+
+
+
+### Livestock. 1. Cattle and pack animals. 2. Small animals. 3. Poultry and others.
+
+## Agriculture Questionnaire Section 6A: Cattle and pack animals
+# The (estimated) value is not available. I use the median price to estimate the value.
+# Selling price is prefered. But buying price is used when selling price is unavailable at the household-livestock level.
+# It is still possible that some values cannot be estimated. (Very rare. 2 cases here.)
+
+use "AGSEC6A.dta", clear
+
+gen price = a6aq14b
+replace price = a6aq13b if price==.
+
+# median price of each cattle...
+bysort LiveStockID: egen price_median = median(price)
+
+gen asset_cattle = a6aq3a * price_median
+
+collapse (sum) asset_cattle, by(hh)
+
+save "asset_cattle.dta", replace
+
+
+## Agriculture Questionnaire Section 6B: Small animals
+# Similar approach is used as in the case of "Cattle and ..."
+# It is still possible that some values cannot be estimated. (Very rare. 3 cases here.)
+
+use "AGSEC6B.dta", clear
+
+gen price = a6bq14b
+replace price = a6bq13b if price==.
+
+# median price of each animal...
+bysort ALiveStock_Small_ID: egen price_median = median(price)
+
+gen asset_smallAnim = a6bq3a * price_median
+
+collapse (sum) asset_smallAnim, by(hh)
+
+save "asset_smallAnim.dta", replace
+
+
+## Agriculture Questionnaire Section 6C: Poultry and others
+# Similar approach is used as in the case of "Cattle and ..."
+
+use "AGSEC6C.dta", clear 
+
+gen price = a6cq14b
+replace price = a6cq13b if price==.
+
+# median price of each poultry...
+bysort APCode: egen price_median = median(price)
+
+gen asset_poultry = a6cq3a * price_median
+
+collapse (sum) asset_poultry, by(hh)
+
+save "asset_poultry.dta", replace
+
+
+## Aggregate across types of livestocks.
+
+use "asset_cattle.dta", clear
+
+merge 1:1 hh using "asset_smallAnim.dta"
+
+drop _merge
+
+merge 1:1 hh using "asset_poultry.dta"
+
+drop _merge
+
+egen asset_livestock = rowtotal(asset_cattle asset_smallAni asset_poultry)
+
+save "asset_livestock.dta", replace
+
+
+
+### Debt
+# No info. on debt/loan for Uganda.
+
+
+
+### Aggregate across all types of assets.
+
+use "asset_house.dta", clear
+
+rename HHID hh
+
+merge 1:1 hh using "asset_land.dta"
+
+drop _merge
+
+merge 1:1 hh using "asset_equip.dta"
+
+drop _merge
+
+merge 1:1 hh using "asset_livestock.dta"
+
+drop _merge
+
+egen asset = rowtotal(asset_house asset_land asset_equip asset_livestock)
+
+save "asset.dta", replace
+
+
+
+
+
+#### PART 4. Solve the Problem 1.
+
+
+## prepare data
+
+# get age info of the household head.
+use "GSEC2.dta", clear
+
+# keep only the data of household heads.
+keep if h2q4==1
+
+sort HHID
+
+list HHID if HHID[_n] == HHID[_n-1]
+
+drop if HHID == "H06107-04-01"
+
+save "GSEC2_2.dta", replace
+
+# get ruban/rural info.
+use "UNPS 2013-14 Consumption Aggregate.dta", clear
+
+sort HHID
+
+list HHID if HHID[_n] == HHID[_n-1]
+
+drop if HHID == "H06107-04-01"
+
+save "UNPS 2013-14 Consumption Aggregate_2.dta", replace
+
+
+## merge data.
+
+use "asset.dta", clear
+
+rename hh HHID
+
+merge 1:1 HHID using "consum.dta"
+
+drop _merge
+
+merge 1:1 HHID using "income.dta"
+
+drop _merge
+
+merge 1:1 HHID using "UNPS 2013-14 Consumption Aggregate_2.dta"
+
+drop _merge
+
+merge 1:1 HHID using "GSEC2_2.dta"
+
+drop _merge
+
+replace asset = asset/3684
+replace income = income/3684
+replace consum = consum/3684
+
+# Note I keep the data with the household head aged less than 80.
+keep if h2q8<=80
+
+save "CIW.dta", replace
+
+
+
+
+
+
+
+#### Question 1.1
+
+bysort urban: sum consum income asset
+
+
+#### Question 1.2
+
+gen log_income = log(income)
+gen log_consum = log(consum)
+gen log_asset = log(asset)
+
+twoway (hist log_consum if urban==1, bin(30) fcolor(none) lcolor(red) lpattern(solid)) (hist log_consum if urban==0, bin(30) fcolor(none) lcolor(yellow) lpattern(dash)) (kdensity log_consum if urban==1, lcolor(red) lpattern(dash)) (kdensity log_consum if urban==0, lcolor(yellow) lpattern(dash) legend(lab(1 "urban") lab(2 "rural") lab(3 "urban") lab(4 "rural")) legen(subtitle("log(consumption) in $")))
+
+graph save "hw1_1.2_consum", replace
+
+twoway (hist log_income if urban==1, bin(30) fcolor(none) lcolor(red) lpattern(solid)) (hist log_income if urban==0, bin(30) fcolor(none) lcolor(yellow) lpattern(dash)) (kdensity log_income if urban==1, lcolor(red) lpattern(dash)) (kdensity log_income if urban==0, lcolor(yellow) lpattern(dash) legend(lab(1 "urban") lab(2 "rural") lab(3 "urban") lab(4 "rural")) legen(subtitle("log(income) in $")))
+
+graph save "hw1_1.2_income", replace
+
+twoway (hist log_asset if urban==1, bin(30) fcolor(none) lcolor(red) lpattern(solid)) (hist log_asset if urban==0, bin(30) fcolor(none) lcolor(yellow) lpattern(dash)) (kdensity log_asset if urban==1, lcolor(red) lpattern(dash)) (kdensity log_asset if urban==0, lcolor(yellow) lpattern(dash) legend(lab(1 "urban") lab(2 "rural") lab(3 "urban") lab(4 "rural")) legen(subtitle("log(asset) in $")))
+
+graph save "hw1_1.2_asset", replace
+
+graph combine "hw1_1.2_consum" "hw1_1.2_income" "hw1_1.2_asset"
+
+graph save "hw1_1.2", replace
+
+
+# compute variance of log
+
+bysort urban: egen sd_log_consum = sd(log_consum)
+bysort urban: egen sd_log_income = sd(log_income)
+bysort urban: egen sd_log_asset = sd(log_asset)
+gen var_log_consum = sd_log_consum^2
+gen var_log_income = sd_log_income^2
+gen var_log_asset = sd_log_asset^2
+
+bysort urban: sum var_log_consum var_log_income var_log_asset
+
+
+
+#### Question 1.3
+# Since Stata is not good at creating 3D plots. I creat "sunflower" graphs to show the joint density.
+
+corr log_consum log_income log_asset
+bysort urban: corr log_consum log_income log_asset
+
+sunflower log_income log_asset if urban==1
+sunflower log_income log_consum if urban==1
+
+sunflower log_income log_asset if urban==0
+sunflower log_income log_consum if urban==0
+
+
+
+#### 1.4
+
+bysort h2q8: egen log_income_age = mean(log_income)
+bysort h2q8: egen log_consum_age = mean(log_consum)
+bysort h2q8: egen log_asset_age = mean(log_asset)
+
+twoway (connect log_income_age h2q8, lcolor(red)) (connect log_consum_age h2q8, lcolor(black)) (connect log_asset_age h2q8, lcolor(blue)) if h2q8>=20, legend(lab(1 "income") lab(2 "consumption") lab(3 "wealth")) legen(subtitle("log CIW over life cycle (in US $)")) xtitle("age")
+
+graph save "hw1_1.4_mean", replace
+
+bysort h2q8: egen sd_log_consum_age = sd(log_consum)
+bysort h2q8: egen sd_log_income_age = sd(log_income)
+bysort h2q8: egen sd_log_asset_age = sd(log_asset)
+gen var_log_consum_age = sd_log_consum_age^2
+gen var_log_income_age = sd_log_income_age^2
+gen var_log_asset_age = sd_log_asset_age^2
+
+twoway (connect var_log_consum_age h2q8, lcolor(red)) (connect var_log_income_age h2q8, lcolor(black)) (connect var_log_asset_age h2q8, lcolor(blue)) if h2q8>=20, legend(lab(1 "income") lab(2 "consumption") lab(3 "wealth")) legen(subtitle("variance of log CIW over life cycle")) xtitle("age")
+
+graph save "hw1_1.4_var", replace
+
+gen corr_income_consum = .
+gen corr_income_asset = .
+gen corr_consum_asset = .
+
+forvalues age=20/80 {
+        corr log_income log_consum if h2q8==`age'
+        qui replace corr_income_consum = r(rho) if h2q8==`age'
+        corr log_income log_asset if h2q8==`age'
+        qui replace corr_income_asset = r(rho) if h2q8==`age'
+        corr log_consum log_asset if h2q8==`age'
+        qui replace corr_consum_asset = r(rho) if h2q8==`age'
+}
+
+twoway (connect corr_income_consum h2q8, lcolor(red)) (connect corr_income_asset h2q8, lcolor(black)) (connect corr_consum_asset h2q8, lcolor(blue)), legend(lab(1 "income ~ consumption") lab(2 "income ~ wealth") lab(3 "consumption ~ wealth")) legen(subtitle("correlation among log CIW over life cycle")) xtitle("age")
+
+graph save "hw1_1.4_corr", replace
+
+graph combine "hw1_1.4_mean" "hw1_1.4_var" "hw1_1.4_corr"
+
+graph save "hw1_1.4", replace
+
+
+#### 1.5 Rank your households by income, and dicuss the behavior of the top and bottom of the consumption and wealth distributions conditional on income.
+
+# generate cutoff points for groups.
+
+egen income_p1 = pctile(income), p(1)
+egen income_p5 = pctile(income), p(5)
+egen income_p10 = pctile(income), p(10)
+
+egen income_p20 = pctile(income), p(20)
+egen income_p40 = pctile(income), p(40)
+egen income_p60 = pctile(income), p(60)
+egen income_p80 = pctile(income), p(80)
+
+egen income_p90 = pctile(income), p(90)
+egen income_p95 = pctile(income), p(95)
+egen income_p99 = pctile(income), p(99)
+
+# generate total consumption and total asset.
+egen consum_total = sum(consum)
+egen asset_total = sum(asset)
+
+# compute shares.
+
+egen consum_0_1 = sum(consum) if income<income_p1
+egen consum_1_5 = sum(consum) if income>=income_p1 & income<income_p5
+egen consum_5_10 = sum(consum) if income>=income_p5 & income<income_p10
+
+egen consum_0_20 = sum(consum) if income<income_p20
+egen consum_20_40 = sum(consum) if income>=income_p20 & income<income_p40
+egen consum_40_60 = sum(consum) if income>=income_p40 & income<income_p60
+egen consum_60_80 = sum(consum) if income>=income_p60 & income<income_p80
+egen consum_80_100 = sum(consum) if income>=income_p80
+
+egen consum_90_95 = sum(consum) if income>=income_p90 & income<income_p95
+egen consum_95_99 = sum(consum) if income>=income_p95 & income<income_p99
+egen consum_99_100 = sum(consum) if income>=income_p99
+
+egen asset_0_1 = sum(asset) if income<income_p1
+egen asset_1_5 = sum(asset) if income>=income_p1 & income<income_p5
+egen asset_5_10 = sum(asset) if income>=income_p5 & income<income_p10
+
+egen asset_0_20 = sum(asset) if income<income_p20
+egen asset_20_40 = sum(asset) if income>=income_p20 & income<income_p40
+egen asset_40_60 = sum(asset) if income>=income_p40 & income<income_p60
+egen asset_60_80 = sum(asset) if income>=income_p60 & income<income_p80
+egen asset_80_100 = sum(asset) if income>=income_p80
+
+egen asset_90_95 = sum(asset) if income>=income_p90 & income<income_p95
+egen asset_95_99 = sum(asset) if income>=income_p95 & income<income_p99
+egen asset_99_100 = sum(asset) if income>=income_p99
+
+gen consum_share_0_1 = consum_0_1/consum_total
+gen consum_share_1_5 = consum_1_5/consum_total
+gen consum_share_5_10 = consum_5_10/consum_total
+gen consum_share_0_20 = consum_0_20/consum_total
+gen consum_share_20_40 = consum_20_40/consum_total
+gen consum_share_40_60 = consum_40_60/consum_total
+gen consum_share_60_80 = consum_60_80/consum_total
+gen consum_share_80_100 = consum_80_100/consum_total
+gen consum_share_90_95 = consum_90_95/consum_total
+gen consum_share_95_99 = consum_95_99/consum_total
+gen consum_share_99_100 = consum_99_100/consum_total
+
+gen asset_share_0_1 = asset_0_1/asset_total
+gen asset_share_1_5 = asset_1_5/asset_total
+gen asset_share_5_10 = asset_5_10/asset_total
+gen asset_share_0_20 = asset_0_20/asset_total
+gen asset_share_20_40 = asset_20_40/asset_total
+gen asset_share_40_60 = asset_40_60/asset_total
+gen asset_share_60_80 = asset_60_80/asset_total
+gen asset_share_80_100 = asset_80_100/asset_total
+gen asset_share_90_95 = asset_90_95/asset_total
+gen asset_share_95_99 = asset_95_99/asset_total
+gen asset_share_99_100 = asset_99_100/asset_total
+
+
+# display shares.
+sum consum_share_0_1 consum_share_1_5 consum_share_5_10 consum_share_0_20 consum_share_20_40 consum_share_40_60 consum_share_60_80 consum_share_80_100 consum_share_90_95 consum_share_95_99 consum_share_99_100 asset_share_0_1 asset_share_1_5 asset_share_5_10 asset_share_0_20 asset_share_20_40 asset_share_40_60 asset_share_60_80 asset_share_80_100 asset_90_95 asset_share_95_99 asset_share_99_100
