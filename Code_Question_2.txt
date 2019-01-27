@@ -1,0 +1,185 @@
+
+
+
+########## Code to solve HW1 Question 2.
+########## Yongkun Yin Cemfi.
+########## Data used: Uganda 2013-2014
+
+
+use "GSEC8_1.dta", clear
+
+# employed = 1 if working in the market / doing business / working without payment / working as an apprentice / working on the household farm / will return to a job.
+ 
+egen employed = rowtotal(h8q4 h8q6 h8q8 h8q10 h8q12 h8q15)
+
+replace employed =1 if employed>0
+
+egen hours_main = rowtotal(h8q36a h8q36b h8q36c h8q36d h8q36e h8q36f h8q36g)
+
+gen hours_second = h8q43
+
+# weekly working hours.
+egen hours = rowtotal(hours_main hours_second)
+replace hours = . if hours<=0
+
+save "labor.dta", replace
+
+
+# prepare data to merge with.
+
+# identify the household head and his/her gender with the household roster
+use "GSEC2.dta", clear
+
+# keep only the data of household heads.
+keep if h2q4==1
+
+merge 1:1 HHID PID using "labor.dta"
+
+keep if _merge==3
+
+drop _merge
+
+# get education info. from corresponding dataset.
+merge 1:1 HHID PID using "GSEC4.dta"
+
+keep if _merge==3
+
+drop _merge
+
+drop if HHID=="H06107-04-01"
+
+# get region / urban info
+merge 1:1 HHID using "UNPS 2013-14 Consumption Aggregate_2.dta"
+
+keep if _merge==3
+
+drop _merge
+
+# Note I keep the data with the household head aged less than 80.
+keep if h2q8<=80
+
+save "labor_ready.dta", replace
+
+
+
+#### Question 2.1 Redo Question 1 for intensive and extensive margins of labor supply.
+
+### Question 2.1.1
+
+bysort urban: sum employed hours
+
+### Question 2.1.2
+# histograms for weekly working hours in urban and rural regions.
+
+gen log_hours = log(hours)
+
+twoway (hist log_hours if urban==1, bin(30) fcolor(none) lcolor(red) lpattern(solid)) (hist log_hours if urban==0, bin(30) fcolor(none) lcolor(yellow) lpattern(dash)) (kdensity log_hours if urban==1, lcolor(red) lpattern(dash)) (kdensity log_hours if urban==0, lcolor(yellow) lpattern(dash) legend(lab(1 "urban") lab(2 "rural") lab(3 "urban") lab(4 "rural")) legen(subtitle("log weekly working hours")))
+
+graph save hw2_1_2_hours_hist, replace
+
+
+# variance of log weekly working hours.
+
+bysort urban: egen sd_log_hours = sd(log_hours)
+
+gen var_log_hours = sd_log_hours^2
+
+bysort urban: sum var_log_hours
+# then the mean will be the variance of log hours.
+
+
+# 2.1.3 Not appliable in this case.
+
+# 2.1.4
+
+bysort h2q8: egen hours_age = mean(hours)
+bysort h2q8: egen log_hours_age = mean(log_hours)
+bysort h2q8: egen sd_log_hours_age = sd(log_hours)
+
+gen var_log_hours_age = sd_log_hours_age^2
+
+twoway (connect log_hours_age h2q8) (connect var_log_hours_age h2q8) if h2q8>=20, legend(lab(1 "log weekly working hours") lab(2 "var of log weekly working hours")) legend(subtitle("mean and var of log weekly working hours over life cyle ")) xtitle("age")
+
+graph save hw2_1_2_hours_profile, replace
+
+
+# 2.1.5 Not appliable in this case.
+
+
+# 2.2 Redo separately for women and men, and by education groups (less than primary school completed, primary school completed, and secondary school completed or higher).
+
+# 2.2.1 for men and women
+
+# histograms of weekly working hours for men vs. women
+
+twoway (hist log_hours if h2q3==1, bin(30) fcolor(none) lcolor(red) lpattern(solid)) (hist log_hours if h2q3==2, bin(30) fcolor(none) lcolor(yellow) lpattern(dash)) (kdensity log_hours if h2q3==1, lcolor(red) lpattern(dash)) (kdensity log_hours if h2q3==2, lcolor(yellow) lpattern(dash) legend(lab(1 "men") lab(2 "women") lab(3 "men") lab(4 "women")) legen(subtitle("log weekly working hours")))
+
+graph save hw2_1_2_hours_hist, replace
+
+
+# variance of log weekly working hours.
+
+bysort h2q3: egen sd_log_hours_gender = sd(log_hours)
+
+gen var_log_hours_gender = sd_log_hours_gender^2
+
+bysort h2q3: sum var_log_hours_gender
+# then the mean will be the variance of log hours.
+
+
+bysort h2q8 h2q3: egen log_hours_age_gender = mean(log_hours)
+bysort h2q8 h2q3: egen sd_log_hours_age_gender = sd(log_hours)
+
+gen var_log_hours_age_gender = sd_log_hours_age_gender^2
+
+twoway (connect log_hours_age_gender h2q8 if h2q3==1) (connect var_log_hours_age_gender h2q8 if h2q3==1) (connect log_hours_age_gender h2q8 if h2q3==2) (connect var_log_hours_age_gender h2q8 if h2q3==2) if h2q8>=20, legend(lab(1 "log hours: men") lab(2 "var of log hours: men") lab(3 "log hours: women") lab(4 "var of log hours: women")) legend(subtitle("mean and var of log hours over life cyle: men v.s. women")) xtitle("age")
+
+graph save hw2_1_2_hours_profile, replace
+
+
+# 2.2.2 for different education groups.
+
+# generate education group dummies.
+
+label list h4q7
+
+gen edu = .
+replace edu = 1 if h4q7>=10 & h4q7<=16
+replace edu = 2 if h4q7>=17 & h4q7<=22
+replace edu = 3 if h4q7>=23 & h4q7<=61 
+
+# histograms of weekly working hours for different education groups.
+
+twoway (hist log_hours if edu==1, bin(30) fcolor(none) lcolor(red) lpattern(solid)) (hist log_hours if edu==2, bin(30) fcolor(none) lcolor(yellow) lpattern(dash)) (hist log_hours if edu==3, bin(30) fcolor(none) lcolor(blue) lpattern(dash)) (kdensity log_hours if edu==1, lcolor(red) lpattern(dash)) (kdensity log_hours if edu==2, lcolor(yellow) lpattern(dash)) (kdensity log_hours if edu==3, lcolor(blue) lpattern(dash) legend(lab(1 "<primary") lab(2 "primary") lab(3 ">=secondary") lab(4 "<primary") lab(5 "primary") lab(6 ">=secondary")) legen(subtitle("log weekly working hours")))
+
+graph save hw2_1_2_hours_hist, replace
+
+
+
+# variance of log weekly working hours.
+
+bysort edu: egen sd_log_hours_edu = sd(log_hours)
+
+gen var_log_hours_edu = sd_log_hours_edu^2
+
+bysort edu: sum var_log_hours_edu
+# then the mean will be the variance of log hours.
+
+
+bysort h2q8 edu: egen log_hours_age_edu = mean(log_hours)
+bysort h2q8 edu: egen sd_log_hours_age_edu = sd(log_hours)
+
+gen var_log_hours_age_edu = sd_log_hours_age_edu^2
+
+
+twoway (connect log_hours_age_edu h2q8 if edu==1, lcolor(black)) (connect var_log_hours_age_edu h2q8 if edu==1, lcolor(black)) (connect log_hours_age_edu h2q8 if edu==2, lcolor(red)) (connect var_log_hours_age_edu h2q8 if edu==2, lcolor(red)) (connect log_hours_age_edu h2q8 if edu==3, lcolor(blue)) (connect var_log_hours_age_edu h2q8 if edu==3, lcolor(blue)) if h2q8>=20, legend(lab(1 "log hours: <primary") lab(2 "var of log hours: <primary") lab(3 "log hours: secondary") lab(4 "var of log hours: secondary") lab(5 "log hours: >=secondary") lab(6 "var of log hours: >=secondary")) legen(subtitle("mean and var of log hours over life cyle for different education groups")) xtitle("age")
+
+graph save hw2_1_2_hours_profile, replace
+
+
+
+
+
+
+
+
