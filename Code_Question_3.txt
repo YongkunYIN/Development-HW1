@@ -1,0 +1,174 @@
+
+########## Code to solve HW1 Question 3.
+########## Yongkun Yin Cemfi.
+########## Data used: Uganda 2013-2014
+
+## Merge CIW and labor supply data.
+
+use "CIW.dta", clear
+
+merge 1:1 HHID using "labor_ready.dta"
+
+keep if _merge==3
+
+drop _merge
+
+
+
+#### 3 Inequality Across Space
+### 3.1 Plot the level of CIW and labor supply by zone (or district) against the level of household income by zone.
+
+bysort district_code: egen income_district = mean(income)
+bysort district_code: egen consum_district = mean(consum)
+bysort district_code: egen asset_district = mean(asset)
+bysort district_code: egen hours_district = mean(hours)
+
+sort income_district
+
+twoway (connect income_district income_district, lcolor(black)) (connect consum_district income_district, lcolor(red)) (connect asset_district income_district, lcolor(blue)), legend(lab(1 "income") lab(2 "consumption") lab(3 "asset")) legend(subtitle("CIW against income at the district level (US $)")) xtitle("income")
+
+graph save "hw1_3.1_CIW", replace
+
+twoway (connect hours_district income_district, lcolor(black)), legend(lab(1 "weekly working hours")) legend(subtitle("labor supply against income at the district level")) xtitle("income") ytitle("weekly working hours")
+
+graph save "hw1_3.1_hours", replace
+
+
+
+
+
+### 3.2 Plot the inequality of CIW and labor supply by zone (or district) against the level of household income by zone
+
+gen log_consum = log(consum)
+gen log_income = log(income)
+gen log_asset = log(asset)
+gen log_hours = log(hours)
+
+bysort district_code: egen sd_log_consum_district = sd(log_consum)
+bysort district_code: egen sd_log_income_district = sd(log_income)
+bysort district_code: egen sd_log_asset_district = sd(log_asset)
+bysort district_code: egen sd_log_hours_district = sd(log_hours)
+gen var_log_consum_district = sd_log_consum_district^2
+gen var_log_income_district = sd_log_income_district^2
+gen var_log_asset_district = sd_log_asset_district^2
+gen var_log_hours_district = sd_log_hours_district^2
+
+sort income_district
+
+twoway (connect var_log_consum_district income_district, lcolor(red)) (connect var_log_income_district income_district, lcolor(black)) (connect var_log_asset_district income_district, lcolor(blue)), legend(lab(1 "income") lab(2 "consumption") lab(3 "wealth")) legen(subtitle("variance of log CIW against income at the district level (US $)")) xtitle("income")
+
+graph save "hw1_3.2_CIW", replace
+
+twoway (connect var_log_hours_district income_district, lcolor(black)), legend(lab(1 "weekly working hours")) legend(subtitle("var of log labor supply against income at the district level")) xtitle("income") ytitle("var of log weekly working hours")
+
+graph save "hw1_3.2_hours", replace
+
+
+
+
+### 3.3 Plot the covariances of CIW and labor supply by zone (or district) against the level of household income by zone
+
+gen corr_income_consum_district = .
+gen corr_income_asset_district = .
+gen corr_consum_asset_district = .
+
+# the following awkard codes compute the correlation coefficients at the district level.
+
+destring district_code, gen (district_code_new)
+
+gen avail = 1 if log_income!=. & log_consum!=. & log_asset!=.
+
+bysort district_code_new: egen obs = sum(avail)
+
+replace district_code_new = . if obs<5
+
+levelsof district_code_new, local(district_cd)
+
+foreach district of local district_cd {
+        corr log_income log_consum if district_code_new==`district'
+        qui replace corr_income_consum = r(rho) if district_code_new==`district'
+        corr log_income log_asset if district_code_new==`district'
+        qui replace corr_income_asset = r(rho) if district_code_new==`district'
+        corr log_consum log_asset if district_code_new==`district'
+        qui replace corr_consum_asset = r(rho) if district_code_new==`district'
+}
+
+sort income_district
+
+twoway (connect corr_income_consum_district income_district, lcolor(red)) (connect corr_income_asset_district income_district, lcolor(black)) (connect corr_consum_asset_district income_district, lcolor(blue)), legend(lab(1 "income ~ consumption") lab(2 "income ~ wealth") lab(3 "consumption ~ wealth")) legen(subtitle("correlation among CIW against income at the district level (US $)")) xtitle("income")
+
+graph save "hw1_3.3_CIW", replace
+
+
+## 3.4
+
+
+
+
+gen wage_per_hour = income/(hours/7*365)
+
+# bysort district_code: egen gdp_per_hour = mean(wage_per_hour)
+gen log_wage_per_hour = log(wage_per_hour)
+
+bysort district_code: egen hours_total = sum(hours)
+bysort district_code: egen gdp = sum(income)
+gen gdp_per_hour = gdp/hours_total
+gen log_gdp_per_hour = log(gdp_per_hour)
+
+tab district_code, gen(district_d)
+
+
+# panel A: both genders.
+
+est clear
+
+reg log_hours log_gdp_per_hour 
+est store m1
+
+reg log_hours log_wage_per_hour 
+est store m2
+
+reg log_hours log_gdp_per_hour log_wage_per_hour
+est store m3
+
+esttab m1 m2 m3 using "hw1_3.4_1.rtf", b(3) se(3) r2 star(* 0.1 ** 0.05 *** 0.01)
+
+# results from this regression should be typed by hand, since too many control variables are included.
+reg log_hours log_wage_per_hour district_d2-district_d104
+
+
+# panel B: men
+
+est clear
+
+reg log_hours log_gdp_per_hour if h2q3==1
+est store m1
+
+reg log_hours log_wage_per_hour if h2q3==1 
+est store m2
+
+reg log_hours log_gdp_per_hour log_wage_per_hour if h2q3==1
+est store m3
+
+esttab m1 m2 m3 using "hw1_3.4_2.rtf", b(3) se(3) r2 star(* 0.1 ** 0.05 *** 0.01)
+
+reg log_hours log_wage_per_hour district_d2-district_d104 if h2q3==1
+
+
+# panel C: women.
+
+est clear
+
+reg log_hours log_gdp_per_hour if h2q3==2
+est store m1
+
+reg log_hours log_wage_per_hour if h2q3==2
+est store m2
+
+reg log_hours log_gdp_per_hour log_wage_per_hour if h2q3==2
+est store m3
+
+esttab m1 m2 m3 using "hw1_3.4_3.rtf", b(3) se(3) r2 star(* 0.1 ** 0.05 *** 0.01)
+
+reg log_hours log_wage_per_hour district_d2-district_d104 if h2q3==2
+
