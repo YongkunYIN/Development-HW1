@@ -1,0 +1,260 @@
+
+##### Preparing the data.
+## Firstly, we construct a dataset with household (HH) ID appearing four times.
+# For each HH with info available for at least two years, we could further interpolate/exterpolate missing info after merging this dataset with the initial dataset.
+
+use dataUGA.dta, clear
+
+encode wave, gen(tt)
+
+xtset hh tt
+sort hh tt
+
+# Fill in some missing info which could be computed with info in other years.
+# For example, if age is missing in 2009 but it's 46 in 2010, then age should be 45 in 2009.
+# Note that this procedure should be repeated three times.
+forvalues i = 1/3{
+    replace ethnic = ethnic[_n+1] if hh[_n]==hh[_n+1] & ethnic[_n]==. & ethnic[_n+1]!=.
+    replace urban = urban[_n+1] if hh[_n]==hh[_n+1] & urban[_n]==. & urban[_n+1]!=.
+    replace female = female[_n+1] if hh[_n]==hh[_n+1] & female[_n]==. & female[_n+1]!=.
+    replace region = region[_n+1] if hh[_n]==hh[_n+1] & region[_n]==. & region[_n+1]!=.
+    replace age = age[_n+1] - (year[_n+1] - year[_n]) if hh[_n]==hh[_n+1] & age[_n]==. & age[_n+1]!=.
+}
+
+# Drop the HH's whose information appears for only one year.
+drop if hh[_n]!=hh[_n-1] & hh[_n]!=hh[_n+1]
+
+# Find the household whose consumption or income (residuals) would be available for less than two years.
+# Then drop them.
+gen c_avail = 1 if lnc!=. & age!=. & familysize!=. & year!=. & ethnic!=. & sex!=. & urban!=. & region!=.
+gen y_avail = 1 if lny!=. & age!=. & familysize!=. & year!=. & ethnic!=. & sex!=. & urban!=. & region!=.
+bysort hh: egen c_aa = sum(c_avail)
+bysort hh: egen y_aa = sum(y_avail)
+drop if c_aa<2 | y_aa<2 
+
+# For each HH, we only keep one obs.
+keep if hh[_n]!=hh[_n-1]
+
+keep hh region
+
+# Gen indicator of waves
+gen tt1 = 1
+gen tt2 = 2
+gen tt3 = 3
+gen tt4 = 4
+
+reshape long tt, i(hh) j(aa)
+
+drop aa
+
+# Now we have HH ID and wave.
+save "hhid.dta", replace
+
+
+## Merge the constructed dataset with the initial dataset. Then work on it.
+
+use dataUGA.dta, clear
+
+encode wave, gen(tt)
+
+xtset hh tt
+sort hh tt
+
+# fill in missing information
+# Note that the procedure should be repeated three times, and we need to do this in both directions (from early to late years, and from late to early years.)
+forvalues i = 1/3{
+    replace ethnic = ethnic[_n+1] if hh[_n]==hh[_n+1] & ethnic[_n]==. & ethnic[_n+1]!=.
+    replace urban = urban[_n+1] if hh[_n]==hh[_n+1] & urban[_n]==. & urban[_n+1]!=.
+    replace female = female[_n+1] if hh[_n]==hh[_n+1] & female[_n]==. & female[_n+1]!=.
+    replace region = region[_n+1] if hh[_n]==hh[_n+1] & region[_n]==. & region[_n+1]!=.
+    replace age = age[_n+1] - (year[_n+1] - year[_n]) if hh[_n]==hh[_n+1] & age[_n]==. & age[_n+1]!=.
+
+    replace ethnic = ethnic[_n-1] if hh[_n]==hh[_n-1] & ethnic[_n]==. & ethnic[_n-1]!=.
+    replace urban = urban[_n-1] if hh[_n]==hh[_n-1] & urban[_n]==. & urban[_n-1]!=.
+    replace female = female[_n-1] if hh[_n]==hh[_n-1] & female[_n]==. & female[_n-1]!=.
+    replace region = region[_n-1] if hh[_n]==hh[_n-1] & region[_n]==. & region[_n-1]!=.
+    replace age = age[_n-1] - (year[_n-1] - year[_n]) if hh[_n]==hh[_n-1] & age[_n]==. & age[_n-1]!=.
+}
+
+replace age_sq = age^2
+
+# region is already available in hhid.dta.
+drop region
+
+merge 1:1 hh tt using "hhid.dta"
+
+# Drop the HH's whose information is available for only one year.
+drop if _merge==1
+
+drop _merge
+
+# Now we have a "pseudo-balanced" panel
+
+
+
+#### Question 1
+
+# Get residuals of consumption and income.
+reg lnc age age_sq familysize i.year i.ethnic female urban
+predict c_res, r
+reg lny age age_sq familysize i.year i.ethnic female urban
+predict y_res, r
+
+# Get balanced panel by interpolation and exterpolation.
+# Interpolate/exterpolate c_res and y_res
+sort hh tt
+by hh: ipolate c_res tt, gen(c_res_pol) epolate
+by hh: ipolate y_res tt, gen(y_res_pol) epolate
+
+# Get the aggregate consumption.
+# Here I prefer to use average consumption instead of aggregate consumption.
+# In fact, aggregation would bring more noise since the number of households used changes over time. 
+bysort region tt: egen c_agg = mean(ctotal)
+gen log_c_agg = log(c_agg)
+
+sort hh tt
+
+# Generate lag of the variables.
+gen c_lag = D.c_res_pol
+gen y_lag = D.y_res_pol
+gen log_c_agg_lag = D.log_c_agg
+
+# Compute growth rates.
+# I use first difference of log. This may not be fully correct, but is very good approximation.
+gen c_growth = c_res_pol - c_lag
+gen y_growth = y_res_pol - y_lag
+gen c_agg_growth = log_c_agg - log_c_agg_lag
+
+# Generate new HH ID as natural numbers so that we could run loop more easily.
+sort tt hh
+by tt: gen hhid = _n
+
+# Generate two variables to store the estimated coefficients.
+gen beta = .
+gen phi = .
+
+# Run regressions for each household.
+forvalues i = 1/2842 {
+    qui reg c_growth y_growth c_agg_growth if hhid==`i', nocon
+    replace beta = _b[y_growth] if hhid==`i' & tt==1
+    replace phi = _b[c_agg_growth] if hhid==`i' & tt==1
+}
+
+# Plot histograms.
+twoway (hist beta if beta>=-2 & beta<=2, bin(50) fcolor(none) lcolor(red) lpattern(solid) graphregion(color(white))) (kdensity beta if beta>=-2 & beta<=2, lcolor(black) lpattern(dash))
+graph save beta.gph, replace
+
+twoway (hist phi if phi>=-0.5 & phi<=0.5, bin(50) fcolor(none) lcolor(red) lpattern(solid) graphregion(color(white))) (kdensity phi if phi>=-0.5 & phi<=0.5, lcolor(black) lpattern(dash))
+graph save phi.gph, replace
+
+graph combine beta.gph phi.gph
+
+graph save beta_phi.gph
+
+# Get summary statistics.
+sum beta phi, detail
+
+
+#### 2a
+
+# gen average income across waves
+gen y = exp(lny)
+bysort hh: egen income_average = mean(y)
+
+# Divide into five groups based on income
+cumul income_average, gen(quintile_income) eq 
+recode quintile_income (min/0.2=1)(0.2/0.4=2)(0.4/0.6=3)(0.6/0.8=4)(0.8/max=5) 
+
+# Get summary statistics.
+bysort quintile_income: sum  beta phi, detail
+
+#### 2b
+# No wealth information or land information is available.
+
+
+#### 2c
+
+# Divide into five groups based on beta
+cumul beta, gen(quintile_beta) eq 
+recode quintile_beta (min/0.2=1)(0.2/0.4=2)(0.4/0.6=3)(0.6/0.8=4)(0.8/max=5)  
+
+# Get summary statistics.
+bysort quintile_beta: sum income_average, detail
+
+
+#### 3 
+reg c_growth y_growth c_agg_growth, nocon
+
+
+#### 4a Redo 1-2-3 for rural and urban 
+
+
+## Redo Q1.
+# histrogram and summary statistics for rural regions.
+
+twoway (hist beta if beta>=-2 & beta<=2 & urban==0, bin(50) fcolor(none) lcolor(red) lpattern(solid) graphregion(color(white))) (kdensity beta if beta>=-2 & beta<=2 & urban==0, lcolor(black) lpattern(dash))
+graph save beta_rural.gph, replace
+
+twoway (hist phi if phi>=-0.5 & phi<=0.5 & urban==0, bin(50) fcolor(none) lcolor(red) lpattern(solid) graphregion(color(white))) (kdensity phi if phi>=-0.5 & phi<=0.5 & urban==0, lcolor(black) lpattern(dash))
+graph save phi_rural.gph, replace
+
+graph combine beta_rural.gph phi_rural.gph
+
+graph save beta_phi_rural.gph, replace
+
+sum beta phi if urban==0, detail
+
+# histogram and summary statistics for urban regions
+
+twoway (hist beta if beta>=-2 & beta<=2 & urban==1, bin(50) fcolor(none) lcolor(red) lpattern(solid) graphregion(color(white))) (kdensity beta if beta>=-2 & beta<=2 & urban==1, lcolor(black) lpattern(dash))
+graph save beta_urban.gph, replace
+
+twoway (hist phi if phi>=-0.5 & phi<=0.5 & urban==1, bin(50) fcolor(none) lcolor(red) lpattern(solid) graphregion(color(white))) (kdensity phi if phi>=-0.5 & phi<=0.5 & urban==1, lcolor(black) lpattern(dash))
+graph save phi_urban.gph, replace
+
+graph combine beta_urban.gph phi_urban.gph
+
+graph save beta_phi_urban.gph
+
+sum beta phi if urban==1, detail
+
+
+## Redo Q2
+
+# 2a
+
+# Generate average income across waves
+gen y = exp(lny)
+drop income_average
+bysort hh urban: egen income_average = mean(y)
+
+# Divide into five groups based on income (for urban and rural respectively).
+cumul income_average if urban==1, gen(quintile_income_urban) eq
+recode quintile_income_urban (min/0.2=1)(0.2/0.4=2)(0.4/0.6=3)(0.6/0.8=4)(0.8/max=5) 
+
+cumul income_average if urban==0, gen(quintile_income_rural) eq
+recode quintile_income_rural (min/0.2=1)(0.2/0.4=2)(0.4/0.6=3)(0.6/0.8=4)(0.8/max=5) 
+
+# Get summary statistics. 
+bysort quintile_income_urban: sum beta phi, detail
+bysort quintile_income_rural: sum beta phi, detail
+
+
+# 2c
+
+# Divide into five groups based on beta (for urban and rural respectively).
+cumul beta if urban==1, gen(quintile_beta_urban) eq 
+recode quintile_beta_urban (min/0.2=1)(0.2/0.4=2)(0.4/0.6=3)(0.6/0.8=4)(0.8/max=5)  
+
+cumul beta if urban==0, gen(quintile_beta_rural) eq 
+recode quintile_beta_rural (min/0.2=1)(0.2/0.4=2)(0.4/0.6=3)(0.6/0.8=4)(0.8/max=5)
+
+# Get summary statistics.
+bysort quintile_beta_urban: sum income_average, detail
+bysort quintile_beta_rural: sum income_average, detail
+
+
+## Redo Q3
+reg c_growth y_growth c_agg_growth if urban==0, nocon
+reg c_growth y_growth c_agg_growth if urban==1, nocon
+
